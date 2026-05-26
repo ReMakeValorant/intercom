@@ -44,7 +44,19 @@ type RemoteAudioBinding = {
   element: HTMLMediaElement;
 };
 
-export function UserPortal({ onLogout }: { onLogout: () => void }) {
+export function UserPortal({
+  onLogout,
+  endpointBase = '/portal',
+  embedded = false,
+  title = 'Mes salons intercom',
+  subtitle = 'Audio navigateur, push-to-talk configurable, écoute multi-salons et indicateurs de parole.'
+}: {
+  onLogout?: () => void;
+  endpointBase?: string;
+  embedded?: boolean;
+  title?: string;
+  subtitle?: string;
+}) {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState('');
   const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
@@ -55,7 +67,7 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
   const audioHostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    api.get('/portal/me').then((res) => setData(res.data)).catch(() => setError('Impossible de charger le portail utilisateur'));
+    api.get(`${endpointBase}/me`).then((res) => setData(res.data)).catch(() => setError('Impossible de charger le portail intercom'));
     return () => {
       for (const session of sessionsRef.current.values()) disconnectSession(session);
       sessionsRef.current.clear();
@@ -186,7 +198,7 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
     setConnectingRoomId(room.id);
     setError('');
     try {
-      const tokenRes = await api.post(`/portal/rooms/${room.id}/livekit-token`);
+      const tokenRes = await api.post(`${endpointBase}/rooms/${room.id}/livekit-token`);
       const lkRoom = new Room({ adaptiveStream: true, dynacast: true });
 
       lkRoom.on(RoomEvent.ParticipantConnected, () => updateParticipants(room.id));
@@ -309,24 +321,28 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
     syncSessions();
   }
 
-  if (error && !data) return <main className="portal"><p className="error">{error}</p><button onClick={onLogout}>Retour</button></main>;
-  if (!data) return <main className="portal"><p>Chargement...</p></main>;
+  const Wrapper = embedded ? 'section' : 'main';
+
+  if (error && !data) return <Wrapper className="portal"><p className="error">{error}</p>{onLogout && <button onClick={onLogout}>Retour</button>}</Wrapper>;
+  if (!data) return <Wrapper className="portal"><p>Chargement...</p></Wrapper>;
 
   return (
-    <main className="portal">
+    <Wrapper className={embedded ? 'portal portal-embedded' : 'portal'}>
       <div ref={audioHostRef} className="audio-host" aria-hidden="true" />
-      <header className="portal-header">
-        <div className="brand">
-          <Radio />
-          <div><strong>Remake Intercom</strong><span>{data.user.displayName}</span></div>
-        </div>
-        <button className="logout" onClick={onLogout}><LogOut size={18} />Déconnexion</button>
-      </header>
+      {!embedded && (
+        <header className="portal-header">
+          <div className="brand">
+            <Radio />
+            <div><strong>Remake Intercom</strong><span>{data.user.displayName}</span></div>
+          </div>
+          {onLogout && <button className="logout" onClick={onLogout}><LogOut size={18} />Déconnexion</button>}
+        </header>
+      )}
 
       <section className="portal-hero">
         <div>
-          <h1>Mes salons intercom</h1>
-          <p>Audio navigateur, push-to-talk configurable, écoute multi-salons et indicateurs de parole.</p>
+          <h1>{title}</h1>
+          <p>{subtitle}</p>
         </div>
         {joinedRooms.length > 0 && <button className="danger" onClick={() => joinedRooms.forEach((room) => leaveRoom(room.id))}><PhoneOff size={18} />Tout quitter</button>}
       </section>
@@ -402,7 +418,7 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
           </article>
         ))}
       </section>
-    </main>
+    </Wrapper>
   );
 }
 

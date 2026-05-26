@@ -10,6 +10,7 @@ import { requireAdmin } from './middleware/auth.js';
 import { authRouter } from './routes/auth.js';
 import { crudRouter } from './routes/crud.js';
 import { portalRouter } from './routes/portal.js';
+import { adminIntercomRouter } from './routes/admin-intercom.js';
 import { permissionsRouter } from './routes/permissions.js';
 import { murmurRouter } from './routes/murmur.js';
 import { logsPresetsRouter } from './routes/logs-presets.js';
@@ -26,6 +27,7 @@ export function createApp() {
   app.use('/auth', authRouter);
   app.use(portalRouter);
   app.use(requireAdmin);
+  app.use(adminIntercomRouter);
   app.use(crudRouter);
   app.use(permissionsRouter);
   app.use(murmurRouter);

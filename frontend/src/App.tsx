@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, Columns3, DoorOpen, FileClock, LayoutDashboard, LogOut, Radio, Shield, Users } from 'lucide-react';
+import { Activity, Columns3, DoorOpen, FileClock, Headphones, LayoutDashboard, LogOut, Radio, Shield, Users } from 'lucide-react';
 import { socket } from './api/client';
 import { CrudPanel } from './components/CrudPanel';
 import { Login } from './pages/Login';
@@ -8,11 +8,12 @@ import { Overrides } from './components/Overrides';
 import { PresetsLogs } from './components/PresetsLogs';
 import { UserPortal } from './components/UserPortal';
 
-type Tab = 'dashboard' | 'users' | 'roles' | 'rooms' | 'matrix' | 'overrides' | 'live' | 'logs';
+type Tab = 'dashboard' | 'intercom' | 'users' | 'roles' | 'rooms' | 'matrix' | 'overrides' | 'live' | 'logs';
 type SessionKind = 'admin' | 'user';
 
 const nav = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'intercom', label: 'Intercom', icon: Headphones },
   { id: 'users', label: 'Utilisateurs', icon: Users },
   { id: 'roles', label: 'Rôles', icon: Shield },
   { id: 'rooms', label: 'Salons', icon: DoorOpen },
@@ -42,6 +43,7 @@ export function App() {
 
   const content = useMemo(() => {
     if (tab === 'users') return <CrudPanel kind="users" />;
+    if (tab === 'intercom') return <UserPortal endpointBase="/admin-intercom" embedded title="Console intercom admin" subtitle="Accès global à tous les salons audio, avec push-to-talk, mute local et indicateurs de parole." />;
     if (tab === 'roles') return <CrudPanel kind="roles" />;
     if (tab === 'rooms') return <CrudPanel kind="rooms" />;
     if (tab === 'matrix') return <Matrix />;
