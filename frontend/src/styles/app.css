@@ -94,6 +94,8 @@ h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
 .danger:hover { background: #b91c1c; }
 .live-panel { display: grid; gap: 14px; margin-bottom: 16px; }
 .live-panel span { color: #8ea0b5; display: block; }
+.joined-stack { display: grid; gap: 12px; margin-bottom: 16px; }
+.audio-host { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .participant-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .participant-list span { display: inline-flex; align-items: center; gap: 7px; background: #0f1720; border: 1px solid #253244; border-radius: 999px; padding: 7px 10px; color: #e5eef7; }
 @media (max-width: 860px) {
