@@ -552,8 +552,10 @@ export function UserPortal({
                 </div>
                 <span className={`permission-chip perm-${room.permission}`}>{labels[room.permission] || room.permission}</span>
               </header>
-              <div className="room-meter">
-                <i style={{ width: session?.micEnabled ? '100%' : session ? '52%' : '12%' }} />
+              <div className="room-state-line">
+                <span className={session ? 'state-pill connected' : 'state-pill idle'}>{session ? 'Connecte' : 'Disponible'}</span>
+                <span className={session?.micEnabled ? 'state-pill mic-live' : 'state-pill'}>{session?.micEnabled ? 'Micro ouvert' : session ? 'Micro ferme' : 'Hors ligne'}</span>
+                {session?.participants.some((participant) => participant.speaking) && <span className="state-pill speaking">Parle</span>}
               </div>
               <footer>
                 <span>{session ? `${session.participants.length} participant(s)` : room.type}</span>
