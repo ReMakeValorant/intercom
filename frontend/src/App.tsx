@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, Columns3, DoorOpen, FileClock, LayoutDashboard, LogOut, Radio, Shield, Users } from 'lucide-react';
-import { api, socket } from './api/client';
+import { socket } from './api/client';
 import { CrudPanel } from './components/CrudPanel';
-import { LiveIntercom } from './components/LiveIntercom';
 import { Login } from './pages/Login';
 import { Matrix } from './components/Matrix';
 import { Overrides } from './components/Overrides';
@@ -27,7 +26,6 @@ export function App() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [sessionKind, setSessionKind] = useState<SessionKind>((localStorage.getItem('sessionKind') as SessionKind) || 'admin');
   const [tab, setTab] = useState<Tab>('dashboard');
-  const [status, setStatus] = useState<any>(null);
   const [event, setEvent] = useState('En attente');
 
   useEffect(() => {
@@ -36,7 +34,6 @@ export function App() {
     socket.on('permissions.modified', () => setEvent('Permissions modifiées'));
     socket.on('sync.completed', () => setEvent('Synchronisation terminée'));
     socket.on('sync.error', (payload) => setEvent(`Erreur sync: ${payload.message}`));
-    api.get('/murmur/status').then((res) => setStatus(res.data)).catch(() => setStatus({ connected: false }));
     return () => {
       socket.disconnect();
       socket.removeAllListeners();
@@ -49,17 +46,26 @@ export function App() {
     if (tab === 'rooms') return <CrudPanel kind="rooms" />;
     if (tab === 'matrix') return <Matrix />;
     if (tab === 'overrides') return <Overrides />;
-    if (tab === 'live') return <LiveIntercom />;
     if (tab === 'logs') return <PresetsLogs />;
+    if (tab === 'live') {
+      return (
+        <section className="dashboard-grid">
+          <div className="metric"><span>Moteur audio</span><strong>LiveKit</strong></div>
+          <div className="metric"><span>Transport</span><strong>WebRTC navigateur</strong></div>
+          <div className="metric"><span>Salons</span><strong>Gérés par permissions</strong></div>
+          <div className="metric"><span>Usage</span><strong>Portail utilisateur</strong></div>
+        </section>
+      );
+    }
     return (
       <section className="dashboard-grid">
         <div className="metric"><span>API</span><strong>Connectée</strong></div>
-        <div className="metric"><span>Murmur</span><strong>{status?.connected ? 'Connecté' : 'Adaptateur à brancher'}</strong></div>
-        <div className="metric"><span>Endpoint Ice</span><strong>{status?.endpoint || '127.0.0.1:6502'}</strong></div>
+        <div className="metric"><span>Audio</span><strong>LiveKit WebRTC</strong></div>
+        <div className="metric"><span>Interface</span><strong>100% navigateur</strong></div>
         <div className="metric"><span>Temps réel</span><strong>{event}</strong></div>
       </section>
     );
-  }, [tab, status, event]);
+  }, [tab, event]);
 
   const logout = () => {
     localStorage.removeItem('token');
@@ -97,9 +103,8 @@ export function App() {
         <header className="topbar">
           <div>
             <h1>{nav.find((item) => item.id === tab)?.label}</h1>
-            <p>Administration salons, rôles, ACL et actions live Mumble/Murmur.</p>
+            <p>Administration salons, rôles, permissions et audio LiveKit/WebRTC.</p>
           </div>
-          <button onClick={() => api.post('/sync/murmur').catch((err) => alert(err.response?.data?.message || err.message))}>Synchroniser Murmur</button>
         </header>
         {content}
       </main>
