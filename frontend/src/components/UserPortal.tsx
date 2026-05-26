@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LogOut, Mic, MicOff, PhoneOff, Radio } from 'lucide-react';
+import { Headphones, LogOut, Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX } from 'lucide-react';
 import { createLocalAudioTrack, LocalAudioTrack, Room, RoomEvent, Track } from 'livekit-client';
 import { api } from '../api/client';
 
@@ -16,6 +16,14 @@ const labels: Record<string, string> = {
   whisper: 'Whisper'
 };
 
+type ParticipantView = {
+  id: string;
+  name: string;
+  speaking: boolean;
+  muted: boolean;
+  local: boolean;
+};
+
 type JoinedRoom = {
   id: string;
   name: string;
@@ -24,7 +32,16 @@ type JoinedRoom = {
   audioTrack?: LocalAudioTrack;
   micEnabled: boolean;
   canPublish: boolean;
-  participants: string[];
+  speakerMuted: boolean;
+  pttMode: boolean;
+  pttKey: string;
+  participants: ParticipantView[];
+};
+
+type RemoteAudioBinding = {
+  roomId: string;
+  track: any;
+  element: HTMLMediaElement;
 };
 
 export function UserPortal({ onLogout }: { onLogout: () => void }) {
@@ -32,7 +49,9 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
   const [error, setError] = useState('');
   const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
   const [connectingRoomId, setConnectingRoomId] = useState<string | null>(null);
+  const [pttCaptureRoomId, setPttCaptureRoomId] = useState<string | null>(null);
   const sessionsRef = useRef<Map<string, JoinedRoom>>(new Map());
+  const remoteAudioRef = useRef<Map<string, RemoteAudioBinding>>(new Map());
   const audioHostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -43,40 +62,123 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
     };
   }, []);
 
+  useEffect(() => {
+    function down(event: KeyboardEvent) {
+      if (pttCaptureRoomId) {
+        event.preventDefault();
+        const session = sessionsRef.current.get(pttCaptureRoomId);
+        if (session) {
+          session.pttKey = event.code;
+          syncSessions();
+        }
+        setPttCaptureRoomId(null);
+        return;
+      }
+
+      for (const session of sessionsRef.current.values()) {
+        if (session.pttMode && event.code === session.pttKey && !event.repeat) {
+          event.preventDefault();
+          setMic(session.id, true);
+        }
+      }
+    }
+
+    function up(event: KeyboardEvent) {
+      for (const session of sessionsRef.current.values()) {
+        if (session.pttMode && event.code === session.pttKey) {
+          event.preventDefault();
+          setMic(session.id, false);
+        }
+      }
+    }
+
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, [pttCaptureRoomId]);
+
   const visibleRooms = useMemo(() => data?.rooms.filter((room: any) => room.canEnter) || [], [data]);
   const joinedIds = useMemo(() => new Set(joinedRooms.map((room) => room.id)), [joinedRooms]);
   const openMicCount = joinedRooms.filter((room) => room.micEnabled).length;
 
   function syncSessions() {
-    setJoinedRooms(Array.from(sessionsRef.current.values()));
+    setJoinedRooms(Array.from(sessionsRef.current.values()).map((session) => ({ ...session, participants: [...session.participants] })));
   }
 
-  function participantNames(lkRoom: Room) {
+  function participantViews(lkRoom: Room): ParticipantView[] {
     return [
-      lkRoom.localParticipant.name || lkRoom.localParticipant.identity,
-      ...Array.from(lkRoom.remoteParticipants.values()).map((participant) => participant.name || participant.identity)
+      {
+        id: lkRoom.localParticipant.identity,
+        name: lkRoom.localParticipant.name || lkRoom.localParticipant.identity,
+        speaking: lkRoom.localParticipant.isSpeaking,
+        muted: !Array.from(lkRoom.localParticipant.audioTrackPublications.values()).some((publication) => !publication.isMuted),
+        local: true
+      },
+      ...Array.from(lkRoom.remoteParticipants.values()).map((participant) => ({
+        id: participant.identity,
+        name: participant.name || participant.identity,
+        speaking: participant.isSpeaking,
+        muted: !Array.from(participant.audioTrackPublications.values()).some((publication) => !publication.isMuted),
+        local: false
+      }))
     ];
   }
 
   function updateParticipants(roomId: string) {
     const session = sessionsRef.current.get(roomId);
     if (!session) return;
-    session.participants = participantNames(session.room);
+    session.participants = participantViews(session.room);
     syncSessions();
   }
 
-  function attachRemoteAudio(roomId: string, track: any) {
+  function attachRemoteAudio(roomId: string, track: any, participant?: any) {
     if (track.kind !== Track.Kind.Audio || !audioHostRef.current) return;
+    const identity = participant?.identity || participant?.sid || `${roomId}:${track.sid}`;
+    if (remoteAudioRef.current.has(identity)) return;
+
+    const session = sessionsRef.current.get(roomId);
     const element = track.attach();
     element.dataset.roomId = roomId;
+    element.dataset.identity = identity;
     element.autoplay = true;
     element.playsInline = true;
+    element.muted = Boolean(session?.speakerMuted);
     audioHostRef.current.appendChild(element);
+    remoteAudioRef.current.set(identity, { roomId, track, element });
     element.play?.().catch(() => undefined);
   }
 
-  function detachRemoteAudio(track: any) {
+  function detachRemoteAudio(track: any, participant?: any) {
+    const identity = participant?.identity || participant?.sid;
+    if (identity) {
+      const binding = remoteAudioRef.current.get(identity);
+      if (binding && binding.track === track) {
+        binding.track.detach?.().forEach((element: HTMLElement) => element.remove());
+        remoteAudioRef.current.delete(identity);
+        attachFallbackAudioForParticipant(identity);
+        return;
+      }
+    }
+
     track.detach?.().forEach((element: HTMLElement) => element.remove());
+  }
+
+  function attachFallbackAudioForParticipant(identity: string) {
+    for (const session of sessionsRef.current.values()) {
+      const participant = session.room.remoteParticipants.get(identity);
+      if (!participant) continue;
+
+      for (const publication of participant.trackPublications.values()) {
+        const track = publication.track;
+        if (track?.kind === Track.Kind.Audio && publication.isSubscribed) {
+          attachRemoteAudio(session.id, track, participant);
+          return;
+        }
+      }
+    }
   }
 
   async function joinRoom(room: any) {
@@ -89,8 +191,17 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
 
       lkRoom.on(RoomEvent.ParticipantConnected, () => updateParticipants(room.id));
       lkRoom.on(RoomEvent.ParticipantDisconnected, () => updateParticipants(room.id));
-      lkRoom.on(RoomEvent.TrackSubscribed, (track) => attachRemoteAudio(room.id, track));
-      lkRoom.on(RoomEvent.TrackUnsubscribed, (track) => detachRemoteAudio(track));
+      lkRoom.on(RoomEvent.TrackMuted, () => updateParticipants(room.id));
+      lkRoom.on(RoomEvent.TrackUnmuted, () => updateParticipants(room.id));
+      lkRoom.on(RoomEvent.ActiveSpeakersChanged, () => updateParticipants(room.id));
+      lkRoom.on(RoomEvent.TrackSubscribed, (track, _publication, participant) => {
+        attachRemoteAudio(room.id, track, participant);
+        updateParticipants(room.id);
+      });
+      lkRoom.on(RoomEvent.TrackUnsubscribed, (track, _publication, participant) => {
+        detachRemoteAudio(track, participant);
+        updateParticipants(room.id);
+      });
       lkRoom.on(RoomEvent.Disconnected, () => {
         removeRoomAudioElements(room.id);
         sessionsRef.current.delete(room.id);
@@ -101,6 +212,7 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
 
       let audioTrack: LocalAudioTrack | undefined;
       let micEnabled = false;
+      const pttMode = room.permission === 'talk_ptt';
       if (tokenRes.data.canPublish) {
         audioTrack = await createLocalAudioTrack({
           echoCancellation: true,
@@ -108,7 +220,8 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
           autoGainControl: true
         });
         await lkRoom.localParticipant.publishTrack(audioTrack);
-        micEnabled = true;
+        micEnabled = !pttMode;
+        if (pttMode) await audioTrack.mute();
       }
 
       sessionsRef.current.set(room.id, {
@@ -119,7 +232,10 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
         audioTrack,
         micEnabled,
         canPublish: tokenRes.data.canPublish,
-        participants: participantNames(lkRoom)
+        speakerMuted: false,
+        pttMode,
+        pttKey: 'Space',
+        participants: participantViews(lkRoom)
       });
       syncSessions();
     } catch (err: any) {
@@ -145,18 +261,51 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
 
   function removeRoomAudioElements(roomId: string) {
     audioHostRef.current?.querySelectorAll(`[data-room-id="${roomId}"]`).forEach((element) => element.remove());
+    for (const [identity, binding] of remoteAudioRef.current.entries()) {
+      if (binding.roomId === roomId) {
+        remoteAudioRef.current.delete(identity);
+        binding.track.detach?.().forEach((element: HTMLElement) => element.remove());
+        attachFallbackAudioForParticipant(identity);
+      }
+    }
+  }
+
+  async function setMic(roomId: string, enabled: boolean) {
+    const session = sessionsRef.current.get(roomId);
+    if (!session?.audioTrack) return;
+    enabled ? await session.audioTrack.unmute() : await session.audioTrack.mute();
+    session.micEnabled = enabled;
+    updateParticipants(roomId);
   }
 
   async function toggleMic(roomId: string) {
     const session = sessionsRef.current.get(roomId);
     if (!session?.audioTrack) return;
-    const next = !session.micEnabled;
-    if (next) {
-      await session.audioTrack.unmute();
-    } else {
-      await session.audioTrack.mute();
-    }
-    session.micEnabled = next;
+    await setMic(roomId, !session.micEnabled);
+  }
+
+  async function togglePtt(roomId: string) {
+    const session = sessionsRef.current.get(roomId);
+    if (!session?.audioTrack) return;
+    session.pttMode = !session.pttMode;
+    if (session.pttMode) await setMic(roomId, false);
+    syncSessions();
+  }
+
+  function toggleSpeaker(roomId: string) {
+    const session = sessionsRef.current.get(roomId);
+    if (!session) return;
+    session.speakerMuted = !session.speakerMuted;
+    audioHostRef.current?.querySelectorAll<HTMLMediaElement>(`[data-room-id="${roomId}"]`).forEach((element) => {
+      element.muted = session.speakerMuted;
+    });
+    syncSessions();
+  }
+
+  function toggleParticipantVolume(participantId: string) {
+    const binding = remoteAudioRef.current.get(participantId);
+    if (!binding) return;
+    binding.element.muted = !binding.element.muted;
     syncSessions();
   }
 
@@ -177,7 +326,7 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
       <section className="portal-hero">
         <div>
           <h1>Mes salons intercom</h1>
-          <p>Audio 100% navigateur. Tu peux rejoindre plusieurs salons et écouter les flux en parallèle.</p>
+          <p>Audio navigateur, push-to-talk configurable, écoute multi-salons et indicateurs de parole.</p>
         </div>
         {joinedRooms.length > 0 && <button className="danger" onClick={() => joinedRooms.forEach((room) => leaveRoom(room.id))}><PhoneOff size={18} />Tout quitter</button>}
       </section>
@@ -194,17 +343,46 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
       {joinedRooms.length > 0 && (
         <section className="joined-stack">
           {joinedRooms.map((session) => (
-            <article className="panel live-panel" key={session.id}>
-              <div>
-                <strong>{session.name}</strong>
-                <span>{session.participants.length} participant(s) · {labels[session.permission] || session.permission}</span>
+            <article className="panel live-panel intercom-room" key={session.id}>
+              <div className="intercom-room-head">
+                <div>
+                  <strong>{session.name}</strong>
+                  <span>{session.participants.length} participant(s) · {labels[session.permission] || session.permission}</span>
+                </div>
+                <div className="icon-row">
+                  <button className={session.speakerMuted ? 'speaker muted' : 'speaker'} onClick={() => toggleSpeaker(session.id)} title="Mute le son du salon">
+                    {session.speakerMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  </button>
+                  <button className="danger" onClick={() => leaveRoom(session.id)}><PhoneOff size={18} />Quitter</button>
+                </div>
               </div>
-              <div className="room-actions">
-                <button onClick={() => toggleMic(session.id)} disabled={!session.audioTrack}>{session.micEnabled ? <MicOff size={18} /> : <Mic size={18} />}{session.micEnabled ? 'Couper micro' : 'Activer micro'}</button>
-                <button className="danger" onClick={() => leaveRoom(session.id)}><PhoneOff size={18} />Quitter</button>
+
+              <div className="talk-controls">
+                <button onClick={() => toggleMic(session.id)} disabled={!session.audioTrack || session.pttMode}>{session.micEnabled ? <MicOff size={18} /> : <Mic size={18} />}{session.micEnabled ? 'Couper micro' : 'Activer micro'}</button>
+                <button className={session.pttMode ? 'ptt active' : 'ptt'} onClick={() => togglePtt(session.id)} disabled={!session.audioTrack}><Headphones size={18} />PTT</button>
+                <button className="keybind" onClick={() => setPttCaptureRoomId(session.id)} disabled={!session.audioTrack}>
+                  {pttCaptureRoomId === session.id ? 'Appuie sur une touche...' : `Touche: ${humanKey(session.pttKey)}`}
+                </button>
               </div>
-              <div className="participant-list">
-                {session.participants.map((participant) => <span key={participant}><i className="dot online" />{participant}</span>)}
+
+              <div className="participant-grid">
+                {session.participants.map((participant) => {
+                  const remoteMuted = participant.local ? false : Boolean(remoteAudioRef.current.get(participant.id)?.element.muted);
+                  return (
+                    <div className={`participant-card ${participant.speaking ? 'speaking' : ''}`} key={participant.id}>
+                      <div className="participant-avatar">{initials(participant.name)}</div>
+                      <div>
+                        <strong>{participant.name}</strong>
+                        <span>{participant.local ? 'toi' : participant.muted ? 'micro coupé' : 'en ligne'}</span>
+                      </div>
+                      {!participant.local && (
+                        <button className={remoteMuted ? 'speaker muted' : 'speaker'} onClick={() => toggleParticipantVolume(participant.id)} title="Mute cet utilisateur">
+                          {remoteMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </article>
           ))}
@@ -226,4 +404,13 @@ export function UserPortal({ onLogout }: { onLogout: () => void }) {
       </section>
     </main>
   );
+}
+
+function initials(name: string) {
+  return name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U';
+}
+
+function humanKey(code: string) {
+  if (code === 'Space') return 'Espace';
+  return code.replace(/^Key/, '').replace(/^Digit/, '');
 }

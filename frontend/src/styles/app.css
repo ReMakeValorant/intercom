@@ -94,10 +94,26 @@ h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
 .danger:hover { background: #b91c1c; }
 .live-panel { display: grid; gap: 14px; margin-bottom: 16px; }
 .live-panel span { color: #8ea0b5; display: block; }
+.intercom-room { gap: 16px; }
+.intercom-room-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.icon-row { display: flex; align-items: center; gap: 8px; }
+.speaker { width: 40px; height: 40px; padding: 0; justify-content: center; background: #172235; border: 1px solid #2b3b52; color: #cfe0f4; }
+.speaker:hover { background: #20314a; }
+.speaker.muted { background: #2a1a21; color: #fca5a5; border-color: #5b2633; }
+.talk-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+.ptt { background: #1a2a3f; border: 1px solid #2b3b52; color: #d7e6f7; }
+.ptt.active { background: #0f766e; border-color: #14b8a6; color: #ecfeff; }
+.keybind { background: #0d1722; border: 1px solid #2b3b52; color: #b9c7d8; }
 .joined-stack { display: grid; gap: 12px; margin-bottom: 16px; }
 .audio-host { position: fixed; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .participant-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .participant-list span { display: inline-flex; align-items: center; gap: 7px; background: #0f1720; border: 1px solid #253244; border-radius: 999px; padding: 7px 10px; color: #e5eef7; }
+.participant-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.participant-card { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 10px; min-height: 60px; background: #0d1722; border: 1px solid #253244; border-radius: 8px; padding: 10px; transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+.participant-card.speaking { border-color: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, .18), 0 0 22px rgba(34, 197, 94, .16); background: #102118; }
+.participant-avatar { width: 38px; height: 38px; border-radius: 8px; display: grid; place-items: center; background: #1f6feb; font-weight: 800; }
+.participant-card strong { display: block; }
+.participant-card span { color: #8ea0b5; font-size: 12px; }
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: static; }
@@ -105,4 +121,5 @@ h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
   .create-user-bar { grid-template-columns: 1fr; }
   .user-grid { grid-template-columns: 1fr; }
   .field-row { grid-template-columns: 1fr; }
+  .intercom-room-head { display: grid; grid-template-columns: 1fr; }
 }
