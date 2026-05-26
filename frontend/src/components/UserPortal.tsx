@@ -7,7 +7,7 @@ const labels: Record<string, string> = {
   inherit: 'Hérité',
   none: 'Aucun accès',
   listen: 'Écoute',
-  talk_ptt: 'Push-to-talk',
+  talk_ptt: 'Talk (PTT)',
   duplex: 'Duplex',
   admin: 'Admin salon',
   move: 'Déplacement',
@@ -49,8 +49,8 @@ export function UserPortal({
   onLogout,
   endpointBase = '/portal',
   embedded = false,
-  title = 'Mes salons intercom',
-  subtitle = 'Audio navigateur, push-to-talk configurable, écoute multi-salons et indicateurs de parole.'
+  title = 'Intercom',
+  subtitle = 'Tap room to toggle. Hold for push-to-talk.'
 }: {
   onLogout?: () => void;
   endpointBase?: string;
@@ -73,7 +73,7 @@ export function UserPortal({
       for (const session of sessionsRef.current.values()) disconnectSession(session);
       sessionsRef.current.clear();
     };
-  }, []);
+  }, [endpointBase]);
 
   useEffect(() => {
     function down(event: KeyboardEvent) {
@@ -114,7 +114,7 @@ export function UserPortal({
   }, [pttCaptureRoomId]);
 
   const visibleRooms = useMemo(() => data?.rooms.filter((room: any) => room.canEnter) || [], [data]);
-  const joinedIds = useMemo(() => new Set(joinedRooms.map((room) => room.id)), [joinedRooms]);
+  const joinedById = useMemo(() => new Map(joinedRooms.map((room) => [room.id, room])), [joinedRooms]);
   const openMicCount = joinedRooms.filter((room) => room.micEnabled).length;
 
   function syncSessions() {
@@ -176,7 +176,6 @@ export function UserPortal({
         return;
       }
     }
-
     track.detach?.().forEach((element: HTMLElement) => element.remove());
   }
 
@@ -184,7 +183,6 @@ export function UserPortal({
     for (const session of sessionsRef.current.values()) {
       const participant = session.room.remoteParticipants.get(identity);
       if (!participant) continue;
-
       for (const publication of participant.trackPublications.values()) {
         const track = publication.track;
         if (track?.kind === Track.Kind.Audio && publication.isSubscribed) {
@@ -228,11 +226,7 @@ export function UserPortal({
       let micEnabled = false;
       const pttMode = room.permission === 'talk_ptt';
       if (tokenRes.data.canPublish) {
-        audioTrack = await createLocalAudioTrack({
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        });
+        audioTrack = await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true });
         await lkRoom.localParticipant.publishTrack(audioTrack);
         micEnabled = !pttMode;
         if (pttMode) await audioTrack.mute();
@@ -338,6 +332,20 @@ export function UserPortal({
     syncSessions();
   }
 
+  async function muteAllMics() {
+    await Promise.all(Array.from(sessionsRef.current.values()).map((session) => setMic(session.id, false)));
+  }
+
+  function muteAllSpeakers() {
+    for (const session of sessionsRef.current.values()) {
+      session.speakerMuted = true;
+      audioHostRef.current?.querySelectorAll<HTMLMediaElement>(`[data-room-id="${session.id}"]`).forEach((element) => {
+        element.muted = true;
+      });
+    }
+    syncSessions();
+  }
+
   const Wrapper = embedded ? 'section' : 'main';
 
   if (error && !data) return <Wrapper className="portal"><p className="error">{error}</p>{onLogout && <button onClick={onLogout}>Retour</button>}</Wrapper>;
@@ -356,98 +364,101 @@ export function UserPortal({
         </header>
       )}
 
-      <section className="portal-hero">
+      <section className="intercom-console-head">
         <div>
           <h1>{title}</h1>
           <p>{subtitle}</p>
         </div>
-        {joinedRooms.length > 0 && <button className="danger" onClick={() => joinedRooms.forEach((room) => leaveRoom(room.id))}><PhoneOff size={18} />Tout quitter</button>}
+        <div className="console-status">
+          <span><i className="dot online" />{joinedRooms.length > 0 ? 'Connected' : 'Ready'}</span>
+          <span>{visibleRooms.length} rooms</span>
+          <span>{openMicCount} mic(s)</span>
+        </div>
       </section>
 
       {error && <p className="error">{error}</p>}
 
-      <section className="dashboard-grid">
-        <div className="metric"><span>Moteur audio</span><strong>LiveKit WebRTC</strong></div>
-        <div className="metric"><span>Salons rejoints</span><strong>{joinedRooms.length}</strong></div>
-        <div className="metric"><span>Micros ouverts</span><strong>{openMicCount}</strong></div>
-        <div className="metric"><span>Rôles</span><strong>{data.user.roles?.map((entry: any) => entry.role.name).join(', ') || data.user.primaryRole?.name || 'Sans rôle'}</strong></div>
+      <section className="intercom-board">
+        {visibleRooms.map((room: any) => {
+          const session = joinedById.get(room.id);
+          return (
+            <article className={`console-room-card ${session ? 'joined' : ''}`} key={room.id}>
+              <header>
+                <div className="room-initial">{initials(room.name).slice(0, 1)}</div>
+                <div>
+                  <strong>{room.name}</strong>
+                  <span>{session ? `${session.participants.length} participant(s)` : '0 participant'} · {room.slug || room.type}</span>
+                </div>
+                <p className={`permission-chip perm-${room.permission}`}>{labels[room.permission] || room.permission}</p>
+              </header>
+
+              <div className="mini-room-actions">
+                {session && <>
+                  <button className={session.speakerMuted ? 'mini-icon muted' : 'mini-icon'} onClick={() => toggleSpeaker(session.id)} title="Mute le son du salon">
+                    {session.speakerMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                  </button>
+                  <button className={session.pttMode ? 'mini-icon active' : 'mini-icon'} onClick={() => togglePtt(session.id)} disabled={!session.audioTrack} title="Push-to-talk">
+                    <Headphones size={16} />
+                  </button>
+                  <button className="mini-key" onClick={() => setPttCaptureRoomId(session.id)} disabled={!session.audioTrack}>
+                    {pttCaptureRoomId === session.id ? 'Appuie...' : humanKey(session.pttKey)}
+                  </button>
+                </>}
+              </div>
+
+              {session ? (
+                <>
+                  <div className="console-participants">
+                    {session.participants.map((participant) => {
+                      const binding = participant.local ? undefined : remoteAudioRef.current.get(participant.id);
+                      const remoteMuted = Boolean(binding?.element.muted);
+                      const remoteVolume = Math.round((binding?.volume ?? 1) * 100);
+                      const canKick = session.permission === 'admin' && !participant.local;
+                      return (
+                        <div className={`console-participant ${participant.speaking ? 'speaking' : ''}`} key={participant.id}>
+                          <span className="mini-avatar">{initials(participant.name).slice(0, 1)}</span>
+                          <div>
+                            <strong>{participant.name}{participant.local ? ' (toi)' : ''}</strong>
+                            <small>{participant.muted ? 'micro coupé' : participant.local ? 'local' : 'en ligne'}</small>
+                          </div>
+                          {!participant.local && <div className="compact-volume">
+                            <button className={remoteMuted ? 'mini-icon muted' : 'mini-icon'} onClick={() => toggleParticipantVolume(participant.id)} title="Mute cet utilisateur">
+                              {remoteMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                            </button>
+                            <input type="range" min="0" max="100" value={remoteVolume} onChange={(event) => setParticipantVolume(participant.id, Number(event.target.value) / 100)} />
+                            <em>{remoteVolume}%</em>
+                            {canKick && <button className="mini-kick" onClick={() => kickParticipant(session.id, participant.id)} title="Kick du salon"><UserX size={14} /></button>}
+                          </div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <footer>
+                    <button onClick={() => toggleMic(session.id)} disabled={!session.audioTrack || session.pttMode}>{session.micEnabled ? <MicOff size={16} /> : <Mic size={16} />}{session.micEnabled ? 'Mute' : 'Mic'}</button>
+                    <button className="danger" onClick={() => leaveRoom(session.id)}><PhoneOff size={16} />Quitter</button>
+                  </footer>
+                </>
+              ) : (
+                <div className="empty-room-state">
+                  <span>{room.type}</span>
+                  <button disabled={connectingRoomId === room.id} onClick={() => joinRoom(room)}>
+                    <Mic size={16} />{connectingRoomId === room.id ? 'Connexion...' : 'Rejoindre'}
+                  </button>
+                </div>
+              )}
+            </article>
+          );
+        })}
       </section>
 
       {joinedRooms.length > 0 && (
-        <section className="joined-stack">
-          {joinedRooms.map((session) => (
-            <article className="panel live-panel intercom-room" key={session.id}>
-              <div className="intercom-room-head">
-                <div>
-                  <strong>{session.name}</strong>
-                  <span>{session.participants.length} participant(s) · {labels[session.permission] || session.permission}</span>
-                </div>
-                <div className="icon-row">
-                  <button className={session.speakerMuted ? 'speaker muted' : 'speaker'} onClick={() => toggleSpeaker(session.id)} title="Mute le son du salon">
-                    {session.speakerMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-                  </button>
-                  <button className="danger" onClick={() => leaveRoom(session.id)}><PhoneOff size={18} />Quitter</button>
-                </div>
-              </div>
-
-              <div className="talk-controls">
-                <button onClick={() => toggleMic(session.id)} disabled={!session.audioTrack || session.pttMode}>{session.micEnabled ? <MicOff size={18} /> : <Mic size={18} />}{session.micEnabled ? 'Couper micro' : 'Activer micro'}</button>
-                <button className={session.pttMode ? 'ptt active' : 'ptt'} onClick={() => togglePtt(session.id)} disabled={!session.audioTrack}><Headphones size={18} />PTT</button>
-                <button className="keybind" onClick={() => setPttCaptureRoomId(session.id)} disabled={!session.audioTrack}>
-                  {pttCaptureRoomId === session.id ? 'Appuie sur une touche...' : `Touche: ${humanKey(session.pttKey)}`}
-                </button>
-              </div>
-
-              <div className="participant-grid">
-                {session.participants.map((participant) => {
-                  const binding = participant.local ? undefined : remoteAudioRef.current.get(participant.id);
-                  const remoteMuted = Boolean(binding?.element.muted);
-                  const remoteVolume = Math.round((binding?.volume ?? 1) * 100);
-                  const canKick = session.permission === 'admin' && !participant.local;
-                  return (
-                    <div className={`participant-card ${participant.speaking ? 'speaking' : ''}`} key={participant.id}>
-                      <div className="participant-avatar">{initials(participant.name)}</div>
-                      <div>
-                        <strong>{participant.name}</strong>
-                        <span>{participant.local ? 'toi' : participant.muted ? 'micro coupé' : 'en ligne'}</span>
-                      </div>
-                      {!participant.local && <div className="participant-audio-controls">
-                        <button className={remoteMuted ? 'speaker muted' : 'speaker'} onClick={() => toggleParticipantVolume(participant.id)} title="Mute cet utilisateur">
-                          {remoteMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-                        </button>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={remoteVolume}
-                          onChange={(event) => setParticipantVolume(participant.id, Number(event.target.value) / 100)}
-                          aria-label={`Volume ${participant.name}`}
-                        />
-                        <em>{remoteVolume}%</em>
-                        {canKick && <button className="kick-button" onClick={() => kickParticipant(session.id, participant.id)} title="Kick du salon"><UserX size={16} /></button>}
-                      </div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </article>
-          ))}
-        </section>
+        <div className="intercom-dock">
+          <button onClick={muteAllMics}><MicOff size={28} /><span>Mute</span></button>
+          <button onClick={muteAllSpeakers}><VolumeX size={28} /><span>Deafen</span></button>
+          <button className="danger" onClick={() => joinedRooms.forEach((room) => leaveRoom(room.id))}><PhoneOff size={28} /><span>Quitter</span></button>
+        </div>
       )}
-
-      <section className="room-grid">
-        {visibleRooms.map((room: any) => (
-          <article className="room-card" key={room.id}>
-            <header><strong>{room.name}</strong><span>{room.type}</span></header>
-            <p className={`permission-pill perm-${room.permission}`}>{labels[room.permission] || room.permission}</p>
-            <div className="room-actions">
-              <button disabled={connectingRoomId === room.id || joinedIds.has(room.id)} onClick={() => joinRoom(room)}>
-                <Mic size={16} />{joinedIds.has(room.id) ? 'Connecté' : connectingRoomId === room.id ? 'Connexion...' : 'Rejoindre'}
-              </button>
-            </div>
-          </article>
-        ))}
-      </section>
     </Wrapper>
   );
 }

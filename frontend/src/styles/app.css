@@ -120,6 +120,43 @@ h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
 .participant-audio-controls em { color: #8ea0b5; font-size: 12px; font-style: normal; text-align: right; }
 .kick-button { width: 40px; height: 40px; padding: 0; justify-content: center; background: #2a1a21; color: #fca5a5; border: 1px solid #5b2633; }
 .kick-button:hover { background: #991b1b; color: #fff; }
+.intercom-console-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.intercom-console-head h1 { font-size: 24px; }
+.intercom-console-head p { color: #9fb1c6; margin: 6px 0 0; }
+.console-status { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.console-status span { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 7px 11px; border: 1px solid #243247; border-radius: 6px; background: #101927; color: #cfe0f4; font-size: 13px; }
+.intercom-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; padding-bottom: 120px; }
+.console-room-card { min-height: 180px; background: #121c28; border: 1px solid #243247; border-radius: 8px; padding: 12px; display: grid; align-content: start; gap: 10px; }
+.console-room-card.joined { border-color: #2d4563; background: #121d2b; }
+.console-room-card header { display: grid; grid-template-columns: 42px 1fr auto; gap: 10px; align-items: start; }
+.console-room-card header strong { display: block; font-size: 16px; line-height: 1.25; }
+.console-room-card header span { color: #9fb1c6; font-size: 13px; }
+.room-initial { width: 38px; height: 38px; border-radius: 8px; display: grid; place-items: center; background: #172235; color: #fff; font-weight: 800; }
+.permission-chip { margin: 0; border-radius: 999px; padding: 5px 9px; font-size: 11px; font-weight: 800; text-transform: uppercase; color: #ecfeff; white-space: nowrap; background: rgba(59, 130, 246, .18); }
+.mini-room-actions { display: flex; gap: 7px; min-height: 34px; }
+.mini-icon { width: 34px; height: 34px; padding: 0; justify-content: center; border: 1px solid #2b3b52; background: #0d1722; color: #bcd0e7; }
+.mini-icon:hover { background: #172235; }
+.mini-icon.active { background: #4f46e5; color: #fff; border-color: #7c3aed; }
+.mini-icon.muted { background: #2a1a21; color: #fca5a5; border-color: #5b2633; }
+.mini-key { min-height: 34px; padding: 0 10px; background: #0d1722; border: 1px solid #2b3b52; color: #bcd0e7; }
+.console-participants { display: grid; gap: 8px; }
+.console-participant { display: grid; grid-template-columns: 28px minmax(100px, 1fr) minmax(145px, 210px); gap: 8px; align-items: center; min-height: 38px; background: #0d1722; border: 1px solid #253244; border-radius: 6px; padding: 7px; transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
+.console-participant.speaking { border-color: #22c55e; box-shadow: 0 0 0 2px rgba(34, 197, 94, .18), 0 0 18px rgba(34, 197, 94, .14); background: #102118; }
+.mini-avatar { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; background: #5b4be8; color: #fff; font-size: 13px; font-weight: 800; }
+.console-participant strong { display: block; font-size: 13px; line-height: 1.1; }
+.console-participant small { display: block; color: #9fb1c6; font-size: 11px; margin-top: 2px; }
+.compact-volume { display: grid; grid-template-columns: 34px 1fr 34px 34px; gap: 6px; align-items: center; }
+.compact-volume input[type="range"] { width: 100%; padding: 0; accent-color: #3b82f6; }
+.compact-volume em { color: #9fb1c6; font-size: 11px; font-style: normal; text-align: right; }
+.mini-kick { width: 34px; height: 34px; padding: 0; justify-content: center; background: #2a1a21; color: #fca5a5; border: 1px solid #5b2633; }
+.mini-kick:hover { background: #991b1b; color: #fff; }
+.console-room-card footer, .empty-room-state { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: auto; }
+.console-room-card footer button, .empty-room-state button { min-height: 36px; padding: 8px 11px; }
+.empty-room-state span { color: #9fb1c6; font-size: 13px; }
+.intercom-dock { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; gap: 14px; padding: 10px; background: rgba(13, 23, 34, .86); border: 1px solid #33445b; border-radius: 12px; backdrop-filter: blur(14px); box-shadow: 0 20px 60px rgba(0,0,0,.32); z-index: 20; }
+.intercom-dock button { width: 96px; height: 82px; display: grid; place-items: center; gap: 4px; background: #121c28; border: 1px solid #3a4b63; color: #dbe7f3; }
+.intercom-dock button span { font-size: 13px; font-weight: 700; }
+.intercom-dock button.danger { background: #2a1a21; color: #fecaca; border-color: #7f1d1d; }
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: static; }
@@ -130,4 +167,11 @@ h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
   .intercom-room-head { display: grid; grid-template-columns: 1fr; }
   .participant-card { grid-template-columns: 38px 1fr; }
   .participant-audio-controls { grid-column: 1 / -1; }
+  .intercom-console-head { display: grid; }
+  .console-status { justify-content: flex-start; }
+  .intercom-board { grid-template-columns: 1fr; padding-bottom: 135px; }
+  .console-participant { grid-template-columns: 28px 1fr; }
+  .compact-volume { grid-column: 1 / -1; }
+  .intercom-dock { width: calc(100vw - 24px); justify-content: center; }
+  .intercom-dock button { width: 30%; }
 }
