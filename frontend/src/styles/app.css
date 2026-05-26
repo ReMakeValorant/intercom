@@ -125,9 +125,11 @@ h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
 .intercom-console-head p { color: #9fb1c6; margin: 6px 0 0; }
 .console-status { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .console-status span { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 7px 11px; border: 1px solid #243247; border-radius: 6px; background: #101927; color: #cfe0f4; font-size: 13px; }
+.solo-clear { min-height: 34px; padding: 7px 11px; background: #4f46e5; border: 1px solid #7c3aed; color: #fff; }
 .intercom-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; padding-bottom: 120px; }
 .console-room-card { min-height: 180px; background: #121c28; border: 1px solid #243247; border-radius: 8px; padding: 12px; display: grid; align-content: start; gap: 10px; }
 .console-room-card.joined { border-color: #2d4563; background: #121d2b; }
+.console-room-card.soloed { border-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139, 92, 246, .2), 0 20px 42px rgba(79, 70, 229, .14); }
 .console-room-card header { display: grid; grid-template-columns: 42px 1fr auto; gap: 10px; align-items: start; }
 .console-room-card header strong { display: block; font-size: 16px; line-height: 1.25; }
 .console-room-card header span { color: #9fb1c6; font-size: 13px; }

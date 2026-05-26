@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Headphones, LogOut, Mic, MicOff, PhoneOff, Radio, UserX, Volume2, VolumeX } from 'lucide-react';
+import { Headphones, LogOut, Mic, MicOff, PhoneOff, Radio, Scan, UserX, Volume2, VolumeX } from 'lucide-react';
 import { createLocalAudioTrack, LocalAudioTrack, Room, RoomEvent, Track } from 'livekit-client';
 import { api } from '../api/client';
 
@@ -43,6 +43,7 @@ type RemoteAudioBinding = {
   track: any;
   element: HTMLMediaElement;
   volume: number;
+  userMuted: boolean;
 };
 
 export function UserPortal({
@@ -63,15 +64,23 @@ export function UserPortal({
   const [joinedRooms, setJoinedRooms] = useState<JoinedRoom[]>([]);
   const [connectingRoomId, setConnectingRoomId] = useState<string | null>(null);
   const [pttCaptureRoomId, setPttCaptureRoomId] = useState<string | null>(null);
+  const [soloRoomId, setSoloRoomId] = useState<string | null>(null);
   const sessionsRef = useRef<Map<string, JoinedRoom>>(new Map());
   const remoteAudioRef = useRef<Map<string, RemoteAudioBinding>>(new Map());
   const audioHostRef = useRef<HTMLDivElement | null>(null);
+  const pressTimersRef = useRef<Map<string, number>>(new Map());
+  const momentaryRoomsRef = useRef<Set<string>>(new Set());
+  const suppressClickRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     api.get(`${endpointBase}/me`).then((res) => setData(res.data)).catch(() => setError('Impossible de charger le portail intercom'));
     return () => {
       for (const session of Array.from(sessionsRef.current.values())) disconnectSession(session);
+      for (const timer of pressTimersRef.current.values()) window.clearTimeout(timer);
       sessionsRef.current.clear();
+      pressTimersRef.current.clear();
+      momentaryRoomsRef.current.clear();
+      suppressClickRef.current.clear();
     };
   }, [endpointBase]);
 
@@ -158,10 +167,10 @@ export function UserPortal({
     element.dataset.identity = identity;
     element.autoplay = true;
     element.playsInline = true;
-    element.muted = Boolean(session?.speakerMuted);
     element.volume = 1;
     audioHostRef.current.appendChild(element);
-    remoteAudioRef.current.set(identity, { roomId, track, element, volume: 1 });
+    remoteAudioRef.current.set(identity, { roomId, track, element, volume: 1, userMuted: false });
+    applyPlaybackState();
     element.play?.().catch(() => undefined);
   }
 
@@ -311,16 +320,15 @@ export function UserPortal({
     const session = sessionsRef.current.get(roomId);
     if (!session) return;
     session.speakerMuted = !session.speakerMuted;
-    audioHostRef.current?.querySelectorAll<HTMLMediaElement>(`[data-room-id="${roomId}"]`).forEach((element) => {
-      element.muted = session.speakerMuted;
-    });
+    applyPlaybackState();
     syncSessions();
   }
 
   function toggleParticipantVolume(participantId: string) {
     const binding = remoteAudioRef.current.get(participantId);
     if (!binding) return;
-    binding.element.muted = !binding.element.muted;
+    binding.userMuted = !binding.userMuted;
+    applyPlaybackState();
     syncSessions();
   }
 
@@ -335,7 +343,8 @@ export function UserPortal({
     const safeVolume = Math.max(0, Math.min(1, volume));
     binding.volume = safeVolume;
     binding.element.volume = safeVolume;
-    binding.element.muted = safeVolume === 0;
+    binding.userMuted = safeVolume === 0;
+    applyPlaybackState();
     syncSessions();
   }
 
@@ -346,11 +355,64 @@ export function UserPortal({
   function muteAllSpeakers() {
     for (const session of sessionsRef.current.values()) {
       session.speakerMuted = true;
-      audioHostRef.current?.querySelectorAll<HTMLMediaElement>(`[data-room-id="${session.id}"]`).forEach((element) => {
-        element.muted = true;
-      });
     }
+    applyPlaybackState();
     syncSessions();
+  }
+
+  function applyPlaybackState(nextSoloRoomId = soloRoomId) {
+    for (const binding of remoteAudioRef.current.values()) {
+      const session = sessionsRef.current.get(binding.roomId);
+      binding.element.muted = binding.userMuted || Boolean(session?.speakerMuted) || Boolean(nextSoloRoomId && binding.roomId !== nextSoloRoomId);
+    }
+  }
+
+  function toggleSolo(roomId: string) {
+    const next = soloRoomId === roomId ? null : roomId;
+    setSoloRoomId(next);
+    applyPlaybackState(next);
+  }
+
+  function clearSolo() {
+    setSoloRoomId(null);
+    applyPlaybackState(null);
+  }
+
+  function startRoomPress(roomId: string) {
+    const session = sessionsRef.current.get(roomId);
+    if (!session?.audioTrack) return;
+    const timer = window.setTimeout(() => {
+      momentaryRoomsRef.current.add(roomId);
+      suppressClickRef.current.add(roomId);
+      setMic(roomId, true);
+    }, 220);
+    pressTimersRef.current.set(roomId, timer);
+  }
+
+  function endRoomPress(roomId: string) {
+    const timer = pressTimersRef.current.get(roomId);
+    if (timer) {
+      window.clearTimeout(timer);
+      pressTimersRef.current.delete(roomId);
+    }
+    if (momentaryRoomsRef.current.has(roomId)) {
+      momentaryRoomsRef.current.delete(roomId);
+      setMic(roomId, false);
+    }
+  }
+
+  function handleRoomClick(room: any) {
+    if (suppressClickRef.current.has(room.id)) {
+      suppressClickRef.current.delete(room.id);
+      return;
+    }
+    const session = sessionsRef.current.get(room.id);
+    if (!session) {
+      joinRoom(room);
+      return;
+    }
+    if (momentaryRoomsRef.current.has(room.id)) return;
+    if (!session.pttMode) toggleMic(room.id);
   }
 
   const Wrapper = embedded ? 'section' : 'main';
@@ -380,6 +442,7 @@ export function UserPortal({
           <span><i className="dot online" />{joinedRooms.length > 0 ? 'Connected' : 'Ready'}</span>
           <span>{visibleRooms.length} rooms</span>
           <span>{openMicCount} mic(s)</span>
+          {soloRoomId && <button className="solo-clear" onClick={clearSolo}>Solo off</button>}
         </div>
       </section>
 
@@ -389,7 +452,15 @@ export function UserPortal({
         {visibleRooms.map((room: any) => {
           const session = joinedById.get(room.id);
           return (
-            <article className={`console-room-card ${session ? 'joined' : ''}`} key={room.id}>
+            <article
+              className={`console-room-card ${session ? 'joined' : ''} ${soloRoomId === room.id ? 'soloed' : ''}`}
+              key={room.id}
+              onPointerDown={() => session && startRoomPress(room.id)}
+              onPointerUp={() => session && endRoomPress(room.id)}
+              onPointerCancel={() => session && endRoomPress(room.id)}
+              onPointerLeave={() => session && endRoomPress(room.id)}
+              onClick={() => handleRoomClick(room)}
+            >
               <header>
                 <div className="room-initial">{initials(room.name).slice(0, 1)}</div>
                 <div>
@@ -401,13 +472,16 @@ export function UserPortal({
 
               <div className="mini-room-actions">
                 {session && <>
-                  <button className={session.speakerMuted ? 'mini-icon muted' : 'mini-icon'} onClick={() => toggleSpeaker(session.id)} title="Mute le son du salon">
+                  <button className={session.speakerMuted ? 'mini-icon muted' : 'mini-icon'} onClick={(event) => { event.stopPropagation(); toggleSpeaker(session.id); }} title="Mute le son du salon">
                     {session.speakerMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                   </button>
-                  <button className={session.pttMode ? 'mini-icon active' : 'mini-icon'} onClick={() => togglePtt(session.id)} disabled={!session.audioTrack} title="Push-to-talk">
+                  <button className={soloRoomId === session.id ? 'mini-icon active' : 'mini-icon'} onClick={(event) => { event.stopPropagation(); toggleSolo(session.id); }} title="Solo ce salon">
+                    <Scan size={16} />
+                  </button>
+                  <button className={session.pttMode ? 'mini-icon active' : 'mini-icon'} onClick={(event) => { event.stopPropagation(); togglePtt(session.id); }} disabled={!session.audioTrack} title="Push-to-talk">
                     <Headphones size={16} />
                   </button>
-                  <button className="mini-key" onClick={() => setPttCaptureRoomId(session.id)} disabled={!session.audioTrack}>
+                  <button className="mini-key" onClick={(event) => { event.stopPropagation(); setPttCaptureRoomId(session.id); }} disabled={!session.audioTrack}>
                     {pttCaptureRoomId === session.id ? 'Appuie...' : humanKey(session.pttKey)}
                   </button>
                 </>}
@@ -418,7 +492,7 @@ export function UserPortal({
                   <div className="console-participants">
                     {session.participants.map((participant) => {
                       const binding = participant.local ? undefined : remoteAudioRef.current.get(participant.id);
-                      const remoteMuted = Boolean(binding?.element.muted);
+                  const remoteMuted = Boolean(binding?.userMuted);
                       const remoteVolume = Math.round((binding?.volume ?? 1) * 100);
                       const canKick = session.permission === 'admin' && !participant.local;
                       return (
@@ -429,12 +503,12 @@ export function UserPortal({
                             <small>{participant.muted ? 'micro coupé' : participant.local ? 'local' : 'en ligne'}</small>
                           </div>
                           {!participant.local && <div className="compact-volume">
-                            <button className={remoteMuted ? 'mini-icon muted' : 'mini-icon'} onClick={() => toggleParticipantVolume(participant.id)} title="Mute cet utilisateur">
+                            <button className={remoteMuted ? 'mini-icon muted' : 'mini-icon'} onClick={(event) => { event.stopPropagation(); toggleParticipantVolume(participant.id); }} title="Mute cet utilisateur">
                               {remoteMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
                             </button>
-                            <input type="range" min="0" max="100" value={remoteVolume} onChange={(event) => setParticipantVolume(participant.id, Number(event.target.value) / 100)} />
+                            <input type="range" min="0" max="100" value={remoteVolume} onClick={(event) => event.stopPropagation()} onChange={(event) => setParticipantVolume(participant.id, Number(event.target.value) / 100)} />
                             <em>{remoteVolume}%</em>
-                            {canKick && <button className="mini-kick" onClick={() => kickParticipant(session.id, participant.id)} title="Kick du salon"><UserX size={14} /></button>}
+                            {canKick && <button className="mini-kick" onClick={(event) => { event.stopPropagation(); kickParticipant(session.id, participant.id); }} title="Kick du salon"><UserX size={14} /></button>}
                           </div>}
                         </div>
                       );
@@ -442,14 +516,14 @@ export function UserPortal({
                   </div>
 
                   <footer>
-                    <button onClick={() => toggleMic(session.id)} disabled={!session.audioTrack || session.pttMode}>{session.micEnabled ? <MicOff size={16} /> : <Mic size={16} />}{session.micEnabled ? 'Mute' : 'Mic'}</button>
-                    <button className="danger" onClick={() => leaveRoom(session.id)}><PhoneOff size={16} />Quitter</button>
+                    <button onClick={(event) => { event.stopPropagation(); toggleMic(session.id); }} disabled={!session.audioTrack || session.pttMode}>{session.micEnabled ? <MicOff size={16} /> : <Mic size={16} />}{session.micEnabled ? 'Mute' : 'Mic'}</button>
+                    <button className="danger" onClick={(event) => { event.stopPropagation(); leaveRoom(session.id); }}><PhoneOff size={16} />Quitter</button>
                   </footer>
                 </>
               ) : (
                 <div className="empty-room-state">
                   <span>{room.type}</span>
-                  <button disabled={connectingRoomId === room.id} onClick={() => joinRoom(room)}>
+                  <button disabled={connectingRoomId === room.id} onClick={(event) => { event.stopPropagation(); joinRoom(room); }}>
                     <Mic size={16} />{connectingRoomId === room.id ? 'Connexion...' : 'Rejoindre'}
                   </button>
                 </div>
