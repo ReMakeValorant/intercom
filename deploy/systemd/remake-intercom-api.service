@@ -1,0 +1,16 @@
+[Unit]
+Description=Remake Intercom API
+After=network.target
+
+[Service]
+Type=simple
+User=intercom
+Group=intercom
+WorkingDirectory=/opt/remake-intercom/backend
+EnvironmentFile=/opt/remake-intercom/backend/.env
+ExecStart=/usr/bin/node dist/src/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
