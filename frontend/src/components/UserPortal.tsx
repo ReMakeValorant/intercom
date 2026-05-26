@@ -70,7 +70,7 @@ export function UserPortal({
   useEffect(() => {
     api.get(`${endpointBase}/me`).then((res) => setData(res.data)).catch(() => setError('Impossible de charger le portail intercom'));
     return () => {
-      for (const session of sessionsRef.current.values()) disconnectSession(session);
+      for (const session of Array.from(sessionsRef.current.values())) disconnectSession(session);
       sessionsRef.current.clear();
     };
   }, [endpointBase]);
@@ -216,8 +216,10 @@ export function UserPortal({
       });
       lkRoom.on(RoomEvent.Disconnected, () => {
         removeRoomAudioElements(room.id);
-        sessionsRef.current.delete(room.id);
-        syncSessions();
+        if (sessionsRef.current.has(room.id)) {
+          sessionsRef.current.delete(room.id);
+          syncSessions();
+        }
       });
 
       await lkRoom.connect(tokenRes.data.url, tokenRes.data.token);
@@ -256,14 +258,19 @@ export function UserPortal({
   async function leaveRoom(roomId: string) {
     const session = sessionsRef.current.get(roomId);
     if (!session) return;
-    disconnectSession(session);
     sessionsRef.current.delete(roomId);
     syncSessions();
+    disconnectSession(session);
   }
 
   function disconnectSession(session: JoinedRoom) {
-    session.audioTrack?.stop();
-    session.room.disconnect();
+    try {
+      session.audioTrack?.stop();
+      session.room.removeAllListeners();
+      session.room.disconnect();
+    } catch {
+      // Disconnect is best-effort; UI state has already been cleaned.
+    }
     removeRoomAudioElements(session.id);
   }
 
@@ -456,7 +463,7 @@ export function UserPortal({
         <div className="intercom-dock">
           <button onClick={muteAllMics}><MicOff size={28} /><span>Mute</span></button>
           <button onClick={muteAllSpeakers}><VolumeX size={28} /><span>Deafen</span></button>
-          <button className="danger" onClick={() => joinedRooms.forEach((room) => leaveRoom(room.id))}><PhoneOff size={28} /><span>Quitter</span></button>
+          <button className="danger" onClick={() => Array.from(sessionsRef.current.keys()).forEach((roomId) => leaveRoom(roomId))}><PhoneOff size={28} /><span>Quitter</span></button>
         </div>
       )}
     </Wrapper>
