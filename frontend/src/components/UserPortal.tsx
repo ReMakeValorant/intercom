@@ -42,6 +42,7 @@ type RemoteAudioBinding = {
   roomId: string;
   track: any;
   element: HTMLMediaElement;
+  volume: number;
 };
 
 export function UserPortal({
@@ -158,8 +159,9 @@ export function UserPortal({
     element.autoplay = true;
     element.playsInline = true;
     element.muted = Boolean(session?.speakerMuted);
+    element.volume = 1;
     audioHostRef.current.appendChild(element);
-    remoteAudioRef.current.set(identity, { roomId, track, element });
+    remoteAudioRef.current.set(identity, { roomId, track, element, volume: 1 });
     element.play?.().catch(() => undefined);
   }
 
@@ -321,6 +323,16 @@ export function UserPortal({
     syncSessions();
   }
 
+  function setParticipantVolume(participantId: string, volume: number) {
+    const binding = remoteAudioRef.current.get(participantId);
+    if (!binding) return;
+    const safeVolume = Math.max(0, Math.min(1, volume));
+    binding.volume = safeVolume;
+    binding.element.volume = safeVolume;
+    binding.element.muted = safeVolume === 0;
+    syncSessions();
+  }
+
   const Wrapper = embedded ? 'section' : 'main';
 
   if (error && !data) return <Wrapper className="portal"><p className="error">{error}</p>{onLogout && <button onClick={onLogout}>Retour</button>}</Wrapper>;
@@ -383,7 +395,9 @@ export function UserPortal({
 
               <div className="participant-grid">
                 {session.participants.map((participant) => {
-                  const remoteMuted = participant.local ? false : Boolean(remoteAudioRef.current.get(participant.id)?.element.muted);
+                  const binding = participant.local ? undefined : remoteAudioRef.current.get(participant.id);
+                  const remoteMuted = Boolean(binding?.element.muted);
+                  const remoteVolume = Math.round((binding?.volume ?? 1) * 100);
                   return (
                     <div className={`participant-card ${participant.speaking ? 'speaking' : ''}`} key={participant.id}>
                       <div className="participant-avatar">{initials(participant.name)}</div>
@@ -391,11 +405,20 @@ export function UserPortal({
                         <strong>{participant.name}</strong>
                         <span>{participant.local ? 'toi' : participant.muted ? 'micro coupé' : 'en ligne'}</span>
                       </div>
-                      {!participant.local && (
+                      {!participant.local && <div className="participant-audio-controls">
                         <button className={remoteMuted ? 'speaker muted' : 'speaker'} onClick={() => toggleParticipantVolume(participant.id)} title="Mute cet utilisateur">
                           {remoteMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         </button>
-                      )}
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={remoteVolume}
+                          onChange={(event) => setParticipantVolume(participant.id, Number(event.target.value) / 100)}
+                          aria-label={`Volume ${participant.name}`}
+                        />
+                        <em>{remoteVolume}%</em>
+                      </div>}
                     </div>
                   );
                 })}
