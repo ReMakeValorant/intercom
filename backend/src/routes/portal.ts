@@ -53,3 +53,17 @@ portalRouter.post('/portal/rooms/:roomId/livekit-token', async (req, res, next) 
     next(error);
   }
 });
+
+portalRouter.post('/portal/rooms/:roomId/participants/:identity/kick', async (req, res, next) => {
+  try {
+    const portal = await userPortalService.getPortal(req.user!.id);
+    const room = portal.rooms.find((entry) => entry.id === req.params.roomId);
+    if (!room || room.permission !== 'admin') return res.status(403).json({ message: 'Permission admin salon requise' });
+    if (req.params.identity === portal.user.id) return res.status(400).json({ message: 'Impossible de se kicker soi-même' });
+
+    await liveKitService.kickParticipant(room.slug, req.params.identity);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});

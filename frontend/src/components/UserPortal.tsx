@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Headphones, LogOut, Mic, MicOff, PhoneOff, Radio, Volume2, VolumeX } from 'lucide-react';
+import { Headphones, LogOut, Mic, MicOff, PhoneOff, Radio, UserX, Volume2, VolumeX } from 'lucide-react';
 import { createLocalAudioTrack, LocalAudioTrack, Room, RoomEvent, Track } from 'livekit-client';
 import { api } from '../api/client';
 
@@ -323,6 +323,11 @@ export function UserPortal({
     syncSessions();
   }
 
+  async function kickParticipant(roomId: string, participantId: string) {
+    if (!confirm('Kick cet utilisateur du salon ?')) return;
+    await api.post(`${endpointBase}/rooms/${roomId}/participants/${encodeURIComponent(participantId)}/kick`);
+  }
+
   function setParticipantVolume(participantId: string, volume: number) {
     const binding = remoteAudioRef.current.get(participantId);
     if (!binding) return;
@@ -398,6 +403,7 @@ export function UserPortal({
                   const binding = participant.local ? undefined : remoteAudioRef.current.get(participant.id);
                   const remoteMuted = Boolean(binding?.element.muted);
                   const remoteVolume = Math.round((binding?.volume ?? 1) * 100);
+                  const canKick = session.permission === 'admin' && !participant.local;
                   return (
                     <div className={`participant-card ${participant.speaking ? 'speaking' : ''}`} key={participant.id}>
                       <div className="participant-avatar">{initials(participant.name)}</div>
@@ -418,6 +424,7 @@ export function UserPortal({
                           aria-label={`Volume ${participant.name}`}
                         />
                         <em>{remoteVolume}%</em>
+                        {canKick && <button className="kick-button" onClick={() => kickParticipant(session.id, participant.id)} title="Kick du salon"><UserX size={16} /></button>}
                       </div>}
                     </div>
                   );

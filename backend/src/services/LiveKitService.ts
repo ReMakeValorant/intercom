@@ -1,9 +1,22 @@
-import { AccessToken } from 'livekit-server-sdk';
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { env } from '../config/env.js';
 
 export class LiveKitService {
+  private roomService?: RoomServiceClient;
+
   roomName(roomSlug: string) {
     return `intercom-${roomSlug}`;
+  }
+
+  serviceUrl() {
+    return env.LIVEKIT_URL.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
+  }
+
+  rooms() {
+    if (!this.roomService) {
+      this.roomService = new RoomServiceClient(this.serviceUrl(), env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET);
+    }
+    return this.roomService;
   }
 
   async createJoinToken(input: {
@@ -26,6 +39,10 @@ export class LiveKitService {
     });
 
     return token.toJwt();
+  }
+
+  async kickParticipant(roomSlug: string, identity: string) {
+    await this.rooms().removeParticipant(this.roomName(roomSlug), identity);
   }
 }
 

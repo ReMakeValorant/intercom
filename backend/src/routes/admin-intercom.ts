@@ -50,3 +50,15 @@ adminIntercomRouter.post('/admin-intercom/rooms/:roomId/livekit-token', async (r
     next(error);
   }
 });
+
+adminIntercomRouter.post('/admin-intercom/rooms/:roomId/participants/:identity/kick', async (req, res, next) => {
+  try {
+    const room = await prisma.room.findUniqueOrThrow({ where: { id: req.params.roomId } });
+    if (req.params.identity === `admin-${req.admin!.id}`) return res.status(400).json({ message: 'Impossible de se kicker soi-même' });
+
+    await liveKitService.kickParticipant(room.slug, req.params.identity);
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
