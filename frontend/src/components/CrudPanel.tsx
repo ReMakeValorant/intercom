@@ -8,6 +8,7 @@ export function CrudPanel({ kind }: { kind: 'users' | 'roles' | 'rooms' }) {
   const [items, setItems] = useState<any[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [form, setForm] = useState<any>({});
+  const [error, setError] = useState('');
 
   const load = () => api.get(`/${kind}`).then((res) => setItems(res.data));
 
@@ -18,9 +19,14 @@ export function CrudPanel({ kind }: { kind: 'users' | 'roles' | 'rooms' }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await api.post(`/${kind}`, normalize(kind, form));
-    setForm({});
-    load();
+    setError('');
+    try {
+      await api.post(`/${kind}`, normalize(kind, form));
+      setForm({});
+      load();
+    } catch (err: any) {
+      setError(formatApiError(err));
+    }
   }
 
   async function remove(id: string) {
@@ -54,6 +60,7 @@ export function CrudPanel({ kind }: { kind: 'users' | 'roles' | 'rooms' }) {
           </select></label>
           <button><Plus size={16} />Créer</button>
         </form>
+        {error && <p className="form-error">{error}</p>}
 
         <div className="user-grid">
           {items.map((user) => (
@@ -92,6 +99,7 @@ export function CrudPanel({ kind }: { kind: 'users' | 'roles' | 'rooms' }) {
         </>}
         <button><Plus size={16} />Créer</button>
       </form>
+      {error && <p className="form-error">{error}</p>}
 
       <div className="cards">
         {items.map((item) => (
@@ -107,6 +115,17 @@ export function CrudPanel({ kind }: { kind: 'users' | 'roles' | 'rooms' }) {
       </div>
     </section>
   );
+}
+
+function formatApiError(err: any) {
+  const data = err.response?.data;
+  if (data?.issues?.length) {
+    return data.issues.map((issue: any) => `${issue.path?.join('.') || 'champ'}: ${issue.message}`).join(' · ');
+  }
+  if (data?.message === 'Une valeur unique existe déjà') {
+    return 'Cet email, nom ou slug existe déjà.';
+  }
+  return data?.message || err.message || 'Action impossible';
 }
 
 function UserCard({ user, roles, onDelete, onPrimaryRole, onToggleRole }: {
