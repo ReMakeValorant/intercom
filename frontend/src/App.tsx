@@ -70,8 +70,12 @@ export function App() {
   }, [tab, event]);
 
   const logout = () => {
+    socket.removeAllListeners();
+    socket.disconnect();
     localStorage.removeItem('token');
     localStorage.removeItem('sessionKind');
+    setSessionKind('admin');
+    setTab('dashboard');
     setToken(null);
   };
 
